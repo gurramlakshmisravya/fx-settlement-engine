@@ -7,8 +7,23 @@ import (
 	json "encoding/json"
 	fmt "fmt"
 
+	"google.golang.org/grpc/encoding"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 )
+
+type JSONCodec struct{}
+
+func (JSONCodec) Name() string { return "json" }
+func (JSONCodec) Marshal(v interface{}) ([]byte, error) {
+	return json.Marshal(v)
+}
+func (JSONCodec) Unmarshal(data []byte, v interface{}) error {
+	return json.Unmarshal(data, v)
+}
+
+func init() {
+	encoding.RegisterCodec(JSONCodec{})
+}
 
 type CreateAccountRequest struct {
 	OwnerName      string  `json:"owner_name,omitempty"`
@@ -504,15 +519,3 @@ func (x *Transaction) GetCreatedAt() string {
 
 var File_proto_settlement_proto protoreflect.FileDescriptor
 
-// JSON Codec helper for gRPC
-type JSONCodec struct{}
-
-func (JSONCodec) Name() string { return "json" }
-func (JSONCodec) Marshal(v interface{}) ([]byte, error) {
-	return json.Marshal(v)
-}
-func (JSONCodec) Unmarshal(data []byte, v interface{}) error {
-	return json.Unmarshal(data, v)
-}
-
-func init() {}

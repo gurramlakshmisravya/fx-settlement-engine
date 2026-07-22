@@ -23,6 +23,7 @@ func main() {
 	log.Printf("Connecting to FX Settlement Engine at %s (TLS=%v)...", *serverAddr, *useTLS)
 
 	var opts []grpc.DialOption
+	opts = append(opts, grpc.WithDefaultCallOptions(grpc.CallContentSubtype("json")))
 	if *useTLS {
 		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})))
 	} else {
