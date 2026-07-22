@@ -166,10 +166,7 @@ func callAPI(ctx context.Context, addr string, useTLS bool, endpoint string, req
 	}
 
 	// Format host address
-	host := addr
-	if strings.HasSuffix(host, ":443") {
-		host = strings.TrimSuffix(host, ":443")
-	}
+	host := strings.TrimSuffix(addr, ":443")
 
 	url := fmt.Sprintf("%s://%s%s", scheme, host, endpoint)
 	body, err := json.Marshal(reqPayload)
