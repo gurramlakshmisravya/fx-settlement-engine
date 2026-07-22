@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package settlement;
+
+option go_package = "github.com/user/fx-settlement-engine/proto/gen;settlementv1";
+
+service AccountService {
+  rpc CreateAccount (CreateAccountRequest) returns (Account);
+  rpc GetAccount (GetAccountRequest) returns (Account);
+  rpc UpdateBalance (UpdateBalanceRequest) returns (Account);
+}
+
+service FXService {
+  rpc LockQuote (LockQuoteRequest) returns (Quote);
+}
+
+service SettlementService {
+  rpc CreateSettlement (CreateSettlementRequest) returns (SettlementResponse);
+  rpc GetTransaction (GetTransactionRequest) returns (Transaction);
+}
+
+message CreateAccountRequest {
+  string owner_name = 1;
+  string currency = 2;
+  double initial_balance = 3;
+}
+
+message GetAccountRequest {
+  string account_id = 1;
+}
+
+message UpdateBalanceRequest {
+  string account_id = 1;
+  double amount_delta = 2; // Positive to credit, negative to debit
+}
+
+message Account {
+  string id = 1;
+  string owner_name = 2;
+  string currency = 3;
+  double balance = 4;
+  string created_at = 5;
+  string updated_at = 6;
+}
+
+message LockQuoteRequest {
+  string from_currency = 1;
+  string to_currency = 2;
+  double amount = 3;
+  int32 ttl_seconds = 4; // Defaults to 60 seconds if 0
+}
+
+message Quote {
+  string quote_id = 1;
+  string from_currency = 2;
+  string to_currency = 3;
+  double rate = 4;
+  double from_amount = 5;
+  double to_amount = 6;
+  string expires_at = 7;
+  bool is_locked = 8;
+}
+
+message CreateSettlementRequest {
+  string sender_account_id = 1;
+  string receiver_account_id = 2;
+  string quote_id = 3;
+  string reference_id = 4;
+}
+
+message SettlementResponse {
+  string transaction_id = 1;
+  string status = 2;
+  string sender_account_id = 3;
+  string receiver_account_id = 4;
+  double sender_debited = 5;
+  double receiver_credited = 6;
+  string from_currency = 7;
+  string to_currency = 8;
+  double fx_rate = 9;
+  string timestamp = 10;
+}
+
+message GetTransactionRequest {
+  string transaction_id = 1;
+}
+
+message Transaction {
+  string id = 1;
+  string sender_account_id = 2;
+  string receiver_account_id = 3;
+  string quote_id = 4;
+  double from_amount = 5;
+  double to_amount = 6;
+  string from_currency = 7;
+  string to_currency = 8;
+  string status = 9;
+  string created_at = 10;
+}

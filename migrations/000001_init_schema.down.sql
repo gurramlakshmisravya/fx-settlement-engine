@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS ledger;
+DROP TABLE IF EXISTS transactions;
+DROP TABLE IF EXISTS quotes;
+DROP TABLE IF EXISTS exchange_rates;
+DROP TABLE IF EXISTS accounts;
