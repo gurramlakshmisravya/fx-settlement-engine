@@ -29,8 +29,13 @@ func Load() *Config {
 		brokers = []string{"localhost:9092"}
 	}
 
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = getEnv("GRPC_PORT", "50051")
+	}
+
 	return &Config{
-		GRPCPort:     getEnv("GRPC_PORT", "50051"),
+		GRPCPort:     port,
 		DBHost:       getEnv("DB_HOST", "localhost"),
 		DBPort:       getEnv("DB_PORT", "5432"),
 		DBUser:       getEnv("DB_USER", "postgres"),
