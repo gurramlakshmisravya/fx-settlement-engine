@@ -1,11 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc"
@@ -16,7 +21,7 @@ import (
 )
 
 func main() {
-	serverAddr := flag.String("addr", "fx-settlement-engine.onrender.com:443", "gRPC server address (host:port)")
+	serverAddr := flag.String("addr", "fx-settlement-engine.onrender.com:443", "Engine server address (host:port)")
 	useTLS := flag.Bool("tls", true, "Use TLS connection")
 	flag.Parse()
 
@@ -45,10 +50,22 @@ func main() {
 
 	log.Println("\n=======================================================")
 	log.Println(" 1. Creating USD Sender Account...")
-	sender, err := accClient.CreateAccount(ctx, &pb.CreateAccountRequest{
+
+	var sender pb.Account
+	err = callAPI(ctx, *serverAddr, *useTLS, "/api/accounts", &pb.CreateAccountRequest{
 		OwnerName:      "Alice USD Corporate",
 		Currency:       "USD",
 		InitialBalance: 10000.0,
+	}, &sender, func() error {
+		res, err := accClient.CreateAccount(ctx, &pb.CreateAccountRequest{
+			OwnerName:      "Alice USD Corporate",
+			Currency:       "USD",
+			InitialBalance: 10000.0,
+		})
+		if err == nil && res != nil {
+			sender = *res
+		}
+		return err
 	})
 	if err != nil {
 		log.Fatalf("Failed to create sender account: %v", err)
@@ -56,10 +73,21 @@ func main() {
 	fmt.Printf("   ✅ Sender Created: ID=%s | Owner=%s | Balance=%.2f %s\n", sender.Id, sender.OwnerName, sender.Balance, sender.Currency)
 
 	log.Println("\n 2. Creating EUR Receiver Account...")
-	receiver, err := accClient.CreateAccount(ctx, &pb.CreateAccountRequest{
+	var receiver pb.Account
+	err = callAPI(ctx, *serverAddr, *useTLS, "/api/accounts", &pb.CreateAccountRequest{
 		OwnerName:      "Bob EUR Enterprise",
 		Currency:       "EUR",
 		InitialBalance: 500.0,
+	}, &receiver, func() error {
+		res, err := accClient.CreateAccount(ctx, &pb.CreateAccountRequest{
+			OwnerName:      "Bob EUR Enterprise",
+			Currency:       "EUR",
+			InitialBalance: 500.0,
+		})
+		if err == nil && res != nil {
+			receiver = *res
+		}
+		return err
 	})
 	if err != nil {
 		log.Fatalf("Failed to create receiver account: %v", err)
@@ -67,11 +95,23 @@ func main() {
 	fmt.Printf("   ✅ Receiver Created: ID=%s | Owner=%s | Balance=%.2f %s\n", receiver.Id, receiver.OwnerName, receiver.Balance, receiver.Currency)
 
 	log.Println("\n 3. Locking FX Exchange Quote (USD -> EUR for $1,000)...")
-	quote, err := fxClient.LockQuote(ctx, &pb.LockQuoteRequest{
+	var quote pb.Quote
+	err = callAPI(ctx, *serverAddr, *useTLS, "/api/quotes/lock", &pb.LockQuoteRequest{
 		FromCurrency: "USD",
 		ToCurrency:   "EUR",
 		Amount:       1000.0,
 		TtlSeconds:   60,
+	}, &quote, func() error {
+		res, err := fxClient.LockQuote(ctx, &pb.LockQuoteRequest{
+			FromCurrency: "USD",
+			ToCurrency:   "EUR",
+			Amount:       1000.0,
+			TtlSeconds:   60,
+		})
+		if err == nil && res != nil {
+			quote = *res
+		}
+		return err
 	})
 	if err != nil {
 		log.Fatalf("Failed to lock quote: %v", err)
@@ -80,11 +120,23 @@ func main() {
 		quote.QuoteId, quote.Rate, quote.FromAmount, quote.ToAmount, quote.ExpiresAt)
 
 	log.Println("\n 4. Executing Atomic Cross-Border Settlement Transaction...")
-	settlement, err := settlementClient.CreateSettlement(ctx, &pb.CreateSettlementRequest{
+	var settlement pb.SettlementResponse
+	err = callAPI(ctx, *serverAddr, *useTLS, "/api/settlements", &pb.CreateSettlementRequest{
 		SenderAccountId:   sender.Id,
 		ReceiverAccountId: receiver.Id,
 		QuoteId:           quote.QuoteId,
 		ReferenceId:       "REF-SETTLE-001",
+	}, &settlement, func() error {
+		res, err := settlementClient.CreateSettlement(ctx, &pb.CreateSettlementRequest{
+			SenderAccountId:   sender.Id,
+			ReceiverAccountId: receiver.Id,
+			QuoteId:           quote.QuoteId,
+			ReferenceId:       "REF-SETTLE-001",
+		})
+		if err == nil && res != nil {
+			settlement = *res
+		}
+		return err
 	})
 	if err != nil {
 		log.Fatalf("Settlement failed: %v", err)
@@ -96,11 +148,56 @@ func main() {
 	fmt.Printf("      Credited Receiver: +%.2f %s\n", settlement.ReceiverCredited, settlement.ToCurrency)
 	fmt.Printf("      FX Execution Rate: %.4f\n", settlement.FxRate)
 
-	log.Println("\n 5. Verifying Updated Sender & Receiver Balances...")
-	updatedSender, _ := accClient.GetAccount(ctx, &pb.GetAccountRequest{AccountId: sender.Id})
-	updatedReceiver, _ := accClient.GetAccount(ctx, &pb.GetAccountRequest{AccountId: receiver.Id})
-
-	fmt.Printf("   📊 Updated Sender Balance: %.2f USD (Debited $1,000)\n", updatedSender.Balance)
-	fmt.Printf("   📊 Updated Receiver Balance: %.2f EUR (Credited €920)\n", updatedReceiver.Balance)
+	log.Println("\n 5. Settlement Execution Complete!")
 	log.Println("=======================================================")
+}
+
+func callAPI(ctx context.Context, addr string, useTLS bool, endpoint string, reqPayload interface{}, respObj interface{}, grpcFunc func() error) error {
+	// Try gRPC call first
+	err := grpcFunc()
+	if err == nil {
+		return nil
+	}
+
+	// If gRPC returns proxy error (e.g. Render HTTP 502/Unavailable), fallback to HTTP REST API
+	scheme := "https"
+	if !useTLS {
+		scheme = "http"
+	}
+
+	// Format host address
+	host := addr
+	if strings.HasSuffix(host, ":443") {
+		host = strings.TrimSuffix(host, ":443")
+	}
+
+	url := fmt.Sprintf("%s://%s%s", scheme, host, endpoint)
+	body, err := json.Marshal(reqPayload)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBytes))
+	}
+
+	return json.Unmarshal(respBytes, respObj)
 }

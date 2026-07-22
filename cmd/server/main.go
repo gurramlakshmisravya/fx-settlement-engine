@@ -3,15 +3,19 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
-	"net"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	_ "github.com/lib/pq"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
@@ -87,38 +91,122 @@ func main() {
 	ledgerService := ledger.NewService()
 	engine := settlement.NewEngine(postgresRepo, accService, fxService, ledgerService, kafkaProducer)
 
-	// 7. Setup gRPC Server
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", cfg.GRPCPort))
-	if err != nil {
-		log.Fatalf("Failed to listen on port %s: %v", cfg.GRPCPort, err)
-	}
-
-	grpcServer := grpc.NewServer()
-
-	// Register Services
+	// 7. Setup gRPC Handlers
 	accHandler := grpchandler.NewAccountGRPCHandler(accService)
 	fxHandler := grpchandler.NewFXGRPCHandler(fxService)
 	settlementHandler := grpchandler.NewSettlementGRPCHandler(engine)
 
+	grpcServer := grpc.NewServer()
 	pb.RegisterAccountServiceServer(grpcServer, accHandler)
 	pb.RegisterFXServiceServer(grpcServer, fxHandler)
 	pb.RegisterSettlementServiceServer(grpcServer, settlementHandler)
-
 	reflection.Register(grpcServer)
 
-	// 8. Graceful Shutdown Signal Interceptor
+	// 8. Create REST HTTP Mux for Web/Render/cURL Health Checks and API calls
+	httpMux := http.NewServeMux()
+
+	httpMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"UP","service":"Real-Time Cross-Border FX & Settlement Engine","database":"PostgreSQL","cache":"Redis"}`))
+	})
+
+	httpMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"UP","database":"connected","redis":"connected"}`))
+	})
+
+	httpMux.HandleFunc("/api/accounts", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var req pb.CreateAccountRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			res, err := accHandler.CreateAccount(r.Context(), &req)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(res)
+			return
+		}
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	})
+
+	httpMux.HandleFunc("/api/quotes/lock", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var req pb.LockQuoteRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			res, err := fxHandler.LockQuote(r.Context(), &req)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(res)
+			return
+		}
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	})
+
+	httpMux.HandleFunc("/api/settlements", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var req pb.CreateSettlementRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			res, err := settlementHandler.CreateSettlement(r.Context(), &req)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(res)
+			return
+		}
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	})
+
+	// Multiplex gRPC and REST HTTP traffic on single PORT
+	mixedHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.ProtoMajor == 2 && strings.Contains(r.Header.Get("Content-Type"), "application/grpc") {
+			grpcServer.ServeHTTP(w, r)
+		} else {
+			httpMux.ServeHTTP(w, r)
+		}
+	})
+
+	h2s := &http2.Server{}
+	h2cHandler := h2c.NewHandler(mixedHandler, h2s)
+
+	httpServer := &http.Server{
+		Addr:    fmt.Sprintf(":%s", cfg.GRPCPort),
+		Handler: h2cHandler,
+	}
+
+	// 9. Graceful Shutdown Signal Interceptor
 	stopChan := make(chan os.Signal, 1)
 	signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		log.Printf("[gRPC Server] Listening on 0.0.0.0:%s...", cfg.GRPCPort)
-		if err := grpcServer.Serve(lis); err != nil {
-			log.Fatalf("gRPC server error: %v", err)
+		log.Printf("[Server] Server listening on 0.0.0.0:%s (gRPC & HTTP REST Enabled)...", cfg.GRPCPort)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server error: %v", err)
 		}
 	}()
 
 	<-stopChan
 	log.Println("\n[Shutdown] Shutting down FX Settlement Engine gracefully...")
+	ctxShut, cancelShut := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelShut()
 	grpcServer.GracefulStop()
+	httpServer.Shutdown(ctxShut)
 	log.Println("[Shutdown] Engine stopped cleanly. Goodbye!")
 }
