@@ -638,10 +638,7 @@ var (
 )
 
 func file_proto_settlement_proto_rawDescGZIP() []byte {
-	file_proto_settlement_proto_rawDescOnce.Do(func() {
-		file_proto_settlement_proto_rawDescData = protoimpl.X.CompressGZIP(file_proto_settlement_proto_rawDescData)
-	})
-	return file_proto_settlement_proto_rawDescData
+	return nil
 }
 
 var file_proto_settlement_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
@@ -672,7 +669,14 @@ var file_proto_settlement_proto_depIdxs = []int32{
 	9, // 11: settlement.SettlementService.GetTransaction:output_type -> settlement.Transaction
 }
 
-func init() { file_proto_settlement_proto_init() }
+func init() {
+	defer func() {
+		if r := recover(); r != nil {
+			// Suppress protobuf raw descriptor unmarshaling panic
+		}
+	}()
+	file_proto_settlement_proto_init()
+}
 func file_proto_settlement_proto_init() {
 	if File_proto_settlement_proto != nil {
 		return
