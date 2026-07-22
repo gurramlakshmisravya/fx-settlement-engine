@@ -168,6 +168,20 @@ func main() {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	})
 
+	httpMux.HandleFunc("/api/ledger", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			entries, err := postgresRepo.ListLedgerEntries(r.Context())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(entries)
+			return
+		}
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	})
+
 	httpMux.HandleFunc("/api/quotes/lock", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			var req pb.LockQuoteRequest

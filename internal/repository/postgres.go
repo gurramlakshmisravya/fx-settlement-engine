@@ -312,3 +312,26 @@ func (r *PostgresRepository) ListTransactions(ctx context.Context) ([]*domain.Tr
 	return transactions, nil
 }
 
+func (r *PostgresRepository) ListLedgerEntries(ctx context.Context) ([]*domain.LedgerEntry, error) {
+	query := `
+		SELECT id, transaction_id, account_id, entry_type, amount, currency, created_at
+		FROM ledger ORDER BY created_at DESC LIMIT 50
+	`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []*domain.LedgerEntry
+	for rows.Next() {
+		e := &domain.LedgerEntry{}
+		if err := rows.Scan(&e.ID, &e.TransactionID, &e.AccountID, &e.EntryType, &e.Amount, &e.Currency, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		entries = append(entries, e)
+	}
+	return entries, nil
+}
+
+

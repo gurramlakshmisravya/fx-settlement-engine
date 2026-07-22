@@ -10,7 +10,7 @@
     <style>
         :root {
             --bg-dark: #090d16;
-            --card-bg: rgba(21, 29, 46, 0.7);
+            --card-bg: rgba(21, 29, 46, 0.75);
             --border-color: rgba(255, 255, 255, 0.08);
             --primary: #6366f1;
             --primary-glow: rgba(99, 102, 241, 0.4);
@@ -45,7 +45,7 @@
             justify-content: space-between;
             align-items: center;
             padding: 20px 40px;
-            background: rgba(15, 23, 42, 0.8);
+            background: rgba(15, 23, 42, 0.85);
             backdrop-filter: blur(16px);
             border-bottom: 1px solid var(--border-color);
             position: sticky;
@@ -82,6 +82,7 @@
         .status-pills {
             display: flex;
             gap: 12px;
+            align-items: center;
         }
 
         .pill {
@@ -105,10 +106,52 @@
             box-shadow: 0 0 8px var(--success-glow);
         }
 
+        .demo-btn {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            cursor: pointer;
+            box-shadow: 0 0 12px var(--success-glow);
+            transition: all 0.2s;
+        }
+        .demo-btn:hover {
+            transform: scale(1.05);
+        }
+
         .container {
             max-width: 1400px;
             margin: 0 auto;
             padding: 30px 20px;
+        }
+
+        /* Result Notification Modal / Card */
+        .notification-card {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid var(--success);
+            border-radius: 16px;
+            padding: 20px 24px;
+            margin-bottom: 24px;
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+        .notification-card.show {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .notification-title {
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: #34d399;
+            margin-bottom: 4px;
+        }
+        .notification-body {
+            font-size: 0.9rem;
+            color: #cbd5e1;
         }
 
         .stats-grid {
@@ -284,7 +327,7 @@
             background: none;
             border: none;
             color: var(--text-muted);
-            font-size: 1rem;
+            font-size: 0.95rem;
             font-weight: 600;
             cursor: pointer;
             padding: 8px 16px;
@@ -354,6 +397,12 @@
             border: 1px solid rgba(168, 85, 247, 0.3);
         }
 
+        .badge-danger {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
         .id-mono {
             font-family: monospace;
             font-size: 0.82rem;
@@ -374,6 +423,7 @@
             FX Settlement Engine
         </div>
         <div class="status-pills">
+            <button class="demo-btn" onclick="runQuickDemo()">⚡ 1-Click Settlement Scenario</button>
             <div class="pill"><div class="dot"></div> Neon PostgreSQL</div>
             <div class="pill"><div class="dot"></div> Upstash Redis</div>
             <div class="pill"><div class="dot"></div> Worker Pool (10)</div>
@@ -381,6 +431,15 @@
     </nav>
 
     <div class="container">
+
+        <!-- Result Notification Banner -->
+        <div id="notification-banner" class="notification-card">
+            <div>
+                <div id="notif-title" class="notification-title">🎉 Result Notification</div>
+                <div id="notif-body" class="notification-body">Operation completed successfully.</div>
+            </div>
+            <button onclick="hideNotif()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-weight:700;">✕</button>
+        </div>
 
         <!-- Top Overview Cards -->
         <div class="stats-grid">
@@ -413,7 +472,7 @@
                 <form id="form-create-account">
                     <div class="form-group">
                         <label>Account Owner Name</label>
-                        <input type="text" id="acc-owner" class="form-control" placeholder="e.g. Acme Global Corp" required>
+                        <input type="text" id="acc-owner" class="form-control" placeholder="e.g. Alice USD Corporate" required>
                     </div>
                     <div class="form-group">
                         <label>Currency</label>
@@ -503,9 +562,11 @@
         <div class="table-section">
             <div class="table-tabs">
                 <button class="tab-btn active" id="btn-accounts" onclick="showTab('accounts')">💳 Registered Accounts</button>
-                <button class="tab-btn" id="btn-transactions" onclick="showTab('transactions')">🔄 Settlement Transactions History</button>
+                <button class="tab-btn" id="btn-transactions" onclick="showTab('transactions')">🔄 Settlement Transactions</button>
+                <button class="tab-btn" id="btn-ledger" onclick="showTab('ledger')">📖 Immutable Ledger (Double-Entry)</button>
             </div>
 
+            <!-- Accounts Table -->
             <div id="tab-accounts" class="table-container">
                 <table>
                     <thead>
@@ -523,12 +584,13 @@
                 </table>
             </div>
 
+            <!-- Transactions Table -->
             <div id="tab-transactions" class="table-container" style="display: none;">
                 <table>
                     <thead>
                         <tr>
                             <th>Transaction ID</th>
-                            <th>Sender -> Receiver</th>
+                            <th>Sender &rarr; Receiver</th>
                             <th>Debited Sender</th>
                             <th>Credited Receiver</th>
                             <th>FX Rate</th>
@@ -541,6 +603,27 @@
                     </tbody>
                 </table>
             </div>
+
+            <!-- Ledger Table -->
+            <div id="tab-ledger" class="table-container" style="display: none;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ledger Entry ID</th>
+                            <th>Transaction ID</th>
+                            <th>Account ID</th>
+                            <th>Entry Type</th>
+                            <th>Amount</th>
+                            <th>Currency</th>
+                            <th>Created At</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-ledger">
+                        <tr><td colspan="7" style="text-align:center;">Loading double-entry ledger...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
         </div>
 
     </div>
@@ -562,6 +645,12 @@
                     const txs = await txRes.json() || [];
                     renderTransactions(txs);
                 }
+
+                const legRes = await fetch('/api/ledger');
+                if (legRes.ok) {
+                    const entries = await legRes.json() || [];
+                    renderLedger(entries);
+                }
             } catch (err) {
                 console.error("Error loading dashboard data:", err);
             }
@@ -572,6 +661,9 @@
             const tbody = document.getElementById('tbody-accounts');
             const selectSender = document.getElementById('settle-sender');
             const selectReceiver = document.getElementById('settle-receiver');
+
+            const currentSender = selectSender.value;
+            const currentReceiver = selectReceiver.value;
 
             selectSender.innerHTML = '<option value="">Select Sender Account...</option>';
             selectReceiver.innerHTML = '<option value="">Select Receiver Account...</option>';
@@ -592,9 +684,10 @@
             `).join('');
 
             accounts.forEach(a => {
-                const opt = `<option value="${a.id}">${a.owner_name} (${formatCurrency(a.balance, a.currency)})</option>`;
-                selectSender.innerHTML += opt;
-                selectReceiver.innerHTML += opt;
+                const optSender = `<option value="${a.id}" ${a.id === currentSender ? 'selected' : ''}>${a.owner_name} (${formatCurrency(a.balance, a.currency)})</option>`;
+                const optReceiver = `<option value="${a.id}" ${a.id === currentReceiver ? 'selected' : ''}>${a.owner_name} (${formatCurrency(a.balance, a.currency)})</option>`;
+                selectSender.innerHTML += optSender;
+                selectReceiver.innerHTML += optReceiver;
             });
         }
 
@@ -620,7 +713,27 @@
             `).join('');
         }
 
-        // Handle Create Account
+        function renderLedger(entries) {
+            const tbody = document.getElementById('tbody-ledger');
+            if (entries.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No double-entry ledger records found.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = entries.map(e => `
+                <tr>
+                    <td class="id-mono">${e.id}</td>
+                    <td class="id-mono">${e.transaction_id}</td>
+                    <td class="id-mono">${e.account_id}</td>
+                    <td><span class="badge ${e.entry_type === 'DEBIT' ? 'badge-danger' : 'badge-success'}">${e.entry_type}</span></td>
+                    <td style="font-weight:700;">${formatCurrency(e.amount, e.currency)}</td>
+                    <td><span class="badge badge-info">${e.currency}</span></td>
+                    <td>${new Date(e.created_at).toLocaleString()}</td>
+                </tr>
+            `).join('');
+        }
+
+        // Handle Create Account Form
         document.getElementById('form-create-account').addEventListener('submit', async (e) => {
             e.preventDefault();
             const payload = {
@@ -636,6 +749,8 @@
             });
 
             if (res.ok) {
+                const acc = await res.json();
+                showNotif("✅ Account Created Successfully!", `Account ID: ${acc.id} | Owner: ${acc.owner_name} | Balance: ${formatCurrency(acc.balance, acc.currency)}`);
                 document.getElementById('acc-owner').value = '';
                 await loadData();
             } else {
@@ -643,7 +758,7 @@
             }
         });
 
-        // Handle Lock Quote
+        // Handle Lock Quote Form
         document.getElementById('form-lock-quote').addEventListener('submit', async (e) => {
             e.preventDefault();
             const payload = {
@@ -667,17 +782,30 @@
                 document.getElementById('res-quote-amount').innerText = formatCurrency(quote.to_amount, quote.to_currency);
                 document.getElementById('quote-result').classList.add('active');
                 document.getElementById('settle-quote-id').value = quote.quote_id;
+                showNotif("🔒 FX Exchange Rate Locked!", `Quote ID: ${quote.quote_id} | Locked Rate: ${quote.rate.toFixed(4)} | $${quote.from_amount} USD -> €${quote.to_amount} EUR`);
             } else {
                 alert("Failed to lock quote!");
             }
         });
 
-        // Handle Settlement
+        // Handle Settlement Form
         document.getElementById('form-execute-settlement').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const senderId = document.getElementById('settle-sender').value;
+            const receiverId = document.getElementById('settle-receiver').value;
+
+            if (!senderId || !receiverId) {
+                alert("Please select both a Sender and Receiver account.");
+                return;
+            }
+            if (senderId === receiverId) {
+                alert("Sender and Receiver cannot be the same account.");
+                return;
+            }
+
             const payload = {
-                sender_account_id: document.getElementById('settle-sender').value,
-                receiver_account_id: document.getElementById('settle-receiver').value,
+                sender_account_id: senderId,
+                receiver_account_id: receiverId,
                 quote_id: document.getElementById('settle-quote-id').value,
                 reference_id: "WEB-REF-" + Math.floor(Math.random()*10000)
             };
@@ -690,7 +818,7 @@
 
             if (res.ok) {
                 const result = await res.json();
-                alert(`🎉 Settlement Executed Successfully!\nTx ID: ${result.transaction_id}\nStatus: ${result.status}`);
+                showNotif("🎉 ATOMIC SETTLEMENT EXECUTED SUCCESSFULLY!", `Tx ID: ${result.transaction_id} | Status: ${result.status} | Debited: -${formatCurrency(result.sender_debited, result.from_currency)} | Credited: +${formatCurrency(result.receiver_credited, result.to_currency)}`);
                 document.getElementById('settle-quote-id').value = '';
                 document.getElementById('quote-result').classList.remove('active');
                 await loadData();
@@ -700,12 +828,64 @@
             }
         });
 
+        // 1-Click Quick Demo Scenario
+        async function runQuickDemo() {
+            showNotif("⚡ Running 1-Click Settlement Demo Scenario...", "Creating Accounts, Locking FX Quote, and Executing Atomic Settlement...");
+
+            // 1. Create USD Sender
+            const senderRes = await fetch('/api/accounts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ owner_name: "Alice USD Corporate", currency: "USD", initial_balance: 10000 })
+            });
+            const sender = await senderRes.json();
+
+            // 2. Create EUR Receiver
+            const receiverRes = await fetch('/api/accounts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ owner_name: "Bob EUR Enterprise", currency: "EUR", initial_balance: 500 })
+            });
+            const receiver = await receiverRes.json();
+
+            // 3. Lock FX Quote
+            const quoteRes = await fetch('/api/quotes/lock', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ from_currency: "USD", to_currency: "EUR", amount: 1000, ttl_seconds: 60 })
+            });
+            const quote = await quoteRes.json();
+
+            // 4. Execute Settlement
+            const settleRes = await fetch('/api/settlements', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sender_account_id: sender.id, receiver_account_id: receiver.id, quote_id: quote.quote_id, reference_id: "DEMO-REF-001" })
+            });
+            const result = await settleRes.json();
+
+            showNotif("🎉 DEMO SETTLEMENT COMPLETE!", `Tx ID: ${result.transaction_id} | Sender Debited: -$1,000 USD | Receiver Credited: +€920 EUR | FX Rate: 0.9200`);
+            await loadData();
+        }
+
+        function showNotif(title, body) {
+            document.getElementById('notif-title').innerText = title;
+            document.getElementById('notif-body').innerText = body;
+            document.getElementById('notification-banner').classList.add('show');
+        }
+
+        function hideNotif() {
+            document.getElementById('notification-banner').classList.remove('show');
+        }
+
         function showTab(tabName) {
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             document.getElementById('tab-accounts').style.display = tabName === 'accounts' ? 'block' : 'none';
             document.getElementById('tab-transactions').style.display = tabName === 'transactions' ? 'block' : 'none';
+            document.getElementById('tab-ledger').style.display = tabName === 'ledger' ? 'block' : 'none';
             if (tabName === 'accounts') document.getElementById('btn-accounts').classList.add('active');
             if (tabName === 'transactions') document.getElementById('btn-transactions').classList.add('active');
+            if (tabName === 'ledger') document.getElementById('btn-ledger').classList.add('active');
         }
 
         function formatCurrency(amount, curr) {
