@@ -101,5 +101,5 @@ func main() {
 
 	fmt.Printf("   📊 Updated Sender Balance: %.2f USD (Debited $1,000)\n", updatedSender.Balance)
 	fmt.Printf("   📊 Updated Receiver Balance: %.2f EUR (Credited €920)\n", updatedReceiver.Balance)
-	log.Println("=======================================================\n")
+	log.Println("=======================================================")
 }
