@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"database/sql"
+
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -31,6 +33,9 @@ import (
 	"github.com/user/fx-settlement-engine/internal/worker"
 	pb "github.com/user/fx-settlement-engine/proto/gen"
 )
+
+//go:embed web/index.html
+var indexHTML []byte
 
 func main() {
 	log.Println("=================================================================")
@@ -102,13 +107,16 @@ func main() {
 	pb.RegisterSettlementServiceServer(grpcServer, settlementHandler)
 	reflection.Register(grpcServer)
 
-	// 8. Create REST HTTP Mux for Web/Render/cURL Health Checks and API calls
+	// 8. Create REST HTTP Mux for Web Dashboard & API endpoints
 	httpMux := http.NewServeMux()
 
 	httpMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"UP","service":"Real-Time Cross-Border FX & Settlement Engine","database":"PostgreSQL","cache":"Redis"}`))
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(indexHTML)
 	})
 
 	httpMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -118,6 +126,16 @@ func main() {
 	})
 
 	httpMux.HandleFunc("/api/accounts", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			accounts, err := postgresRepo.ListAccounts(r.Context())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(accounts)
+			return
+		}
 		if r.Method == http.MethodPost {
 			var req pb.CreateAccountRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -131,6 +149,20 @@ func main() {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(res)
+			return
+		}
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	})
+
+	httpMux.HandleFunc("/api/transactions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			txs, err := postgresRepo.ListTransactions(r.Context())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(txs)
 			return
 		}
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -196,7 +228,7 @@ func main() {
 	signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		log.Printf("[Server] Server listening on 0.0.0.0:%s (gRPC & HTTP REST Enabled)...", cfg.GRPCPort)
+		log.Printf("[Server] Server listening on 0.0.0.0:%s (Web UI & gRPC & REST Enabled)...", cfg.GRPCPort)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server error: %v", err)
 		}

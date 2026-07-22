@@ -270,3 +270,45 @@ func (r *PostgresRepository) GetTransactionByID(ctx context.Context, id string) 
 	}
 	return t, nil
 }
+
+func (r *PostgresRepository) ListAccounts(ctx context.Context) ([]*domain.Account, error) {
+	query := `SELECT id, owner_name, currency, balance, created_at, updated_at FROM accounts ORDER BY created_at DESC LIMIT 50`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var accounts []*domain.Account
+	for rows.Next() {
+		acc := &domain.Account{}
+		if err := rows.Scan(&acc.ID, &acc.OwnerName, &acc.Currency, &acc.Balance, &acc.CreatedAt, &acc.UpdatedAt); err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, acc)
+	}
+	return accounts, nil
+}
+
+func (r *PostgresRepository) ListTransactions(ctx context.Context) ([]*domain.Transaction, error) {
+	query := `
+		SELECT id, sender_account_id, receiver_account_id, quote_id, from_amount, to_amount, from_currency, to_currency, status, created_at
+		FROM transactions ORDER BY created_at DESC LIMIT 50
+	`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var transactions []*domain.Transaction
+	for rows.Next() {
+		t := &domain.Transaction{}
+		if err := rows.Scan(&t.ID, &t.SenderAccountID, &t.ReceiverAccountID, &t.QuoteID, &t.FromAmount, &t.ToAmount, &t.FromCurrency, &t.ToCurrency, &t.Status, &t.CreatedAt); err != nil {
+			return nil, err
+		}
+		transactions = append(transactions, t)
+	}
+	return transactions, nil
+}
+
