@@ -16,6 +16,9 @@ type EventProducer struct {
 }
 
 func NewEventProducer(brokers []string, topic string) *EventProducer {
+	if len(brokers) == 0 || brokers[0] == "" {
+		return nil
+	}
 	writer := &kafka.Writer{
 		Addr:     kafka.TCP(brokers...),
 		Topic:    topic,
@@ -25,7 +28,7 @@ func NewEventProducer(brokers []string, topic string) *EventProducer {
 }
 
 func (p *EventProducer) PublishAuditEvent(ctx context.Context, event *domain.AuditEvent) error {
-	if p.writer == nil {
+	if p == nil || p.writer == nil {
 		return nil
 	}
 
@@ -43,7 +46,7 @@ func (p *EventProducer) PublishAuditEvent(ctx context.Context, event *domain.Aud
 	err = p.writer.WriteMessages(ctx, msg)
 	if err != nil {
 		log.Printf("[Kafka Producer] Warning: failed to write message to Kafka: %v", err)
-		return nil // Non-blocking for core settlement flow
+		return nil
 	}
 
 	log.Printf("[Kafka Producer] Published audit event for transaction %s", event.TransactionID)
@@ -51,7 +54,7 @@ func (p *EventProducer) PublishAuditEvent(ctx context.Context, event *domain.Aud
 }
 
 func (p *EventProducer) Close() error {
-	if p.writer != nil {
+	if p != nil && p.writer != nil {
 		return p.writer.Close()
 	}
 	return nil
@@ -62,17 +65,24 @@ type AuditConsumer struct {
 }
 
 func NewAuditConsumer(brokers []string, topic, groupID string) *AuditConsumer {
+	if len(brokers) == 0 || brokers[0] == "" {
+		return nil
+	}
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:  brokers,
 		Topic:    topic,
 		GroupID:  groupID,
-		MinBytes: 10 * 1024,      // 10KB
-		MaxBytes: 10 * 1024 * 1024, // 10MB
+		MinBytes: 10 * 1024,
+		MaxBytes: 10 * 1024 * 1024,
 	})
 	return &AuditConsumer{reader: reader}
 }
 
 func (c *AuditConsumer) StartListening(ctx context.Context) {
+	if c == nil || c.reader == nil {
+		log.Println("[Kafka Consumer] Kafka integration disabled (no cloud broker configured). Core engine operating smoothly.")
+		return
+	}
 	log.Println("[Kafka Consumer] Audit listener started...")
 	for {
 		select {
@@ -86,7 +96,7 @@ func (c *AuditConsumer) StartListening(ctx context.Context) {
 					return
 				}
 				log.Printf("[Kafka Consumer] Error reading message: %v", err)
-				time.Sleep(1 * time.Second)
+				time.Sleep(5 * time.Second)
 				continue
 			}
 
@@ -105,7 +115,7 @@ func (c *AuditConsumer) StartListening(ctx context.Context) {
 }
 
 func (c *AuditConsumer) Close() error {
-	if c.reader != nil {
+	if c != nil && c.reader != nil {
 		return c.reader.Close()
 	}
 	return nil
