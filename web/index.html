@@ -631,24 +631,28 @@
     </div>
 
     <script>
+        const API_BASE = window.location.hostname.includes('github.io') || window.location.protocol === 'file:' || (window.location.hostname === 'localhost' && window.location.port !== '10000')
+            ? 'https://fx-settlement-engine.onrender.com'
+            : '';
+
         let accountsCache = [];
         let activeQuoteId = '';
 
         async function loadData() {
             try {
-                const accRes = await fetch('/api/accounts');
+                const accRes = await fetch(`${API_BASE}/api/accounts`);
                 if (accRes.ok) {
                     accountsCache = await accRes.json() || [];
                     renderAccounts(accountsCache);
                 }
 
-                const txRes = await fetch('/api/transactions');
+                const txRes = await fetch(`${API_BASE}/api/transactions`);
                 if (txRes.ok) {
                     const txs = await txRes.json() || [];
                     renderTransactions(txs);
                 }
 
-                const legRes = await fetch('/api/ledger');
+                const legRes = await fetch(`${API_BASE}/api/ledger`);
                 if (legRes.ok) {
                     const entries = await legRes.json() || [];
                     renderLedger(entries);
@@ -744,7 +748,7 @@
                 initial_balance: parseFloat(document.getElementById('acc-balance').value)
             };
 
-            const res = await fetch('/api/accounts', {
+            const res = await fetch(`${API_BASE}/api/accounts`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -770,7 +774,7 @@
                 ttl_seconds: 60
             };
 
-            const res = await fetch('/api/quotes/lock', {
+            const res = await fetch(`${API_BASE}/api/quotes/lock`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -812,7 +816,7 @@
                 reference_id: "WEB-REF-" + Math.floor(Math.random()*10000)
             };
 
-            const res = await fetch('/api/settlements', {
+            const res = await fetch(`${API_BASE}/api/settlements`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -835,7 +839,7 @@
             showNotif("⚡ Running 1-Click Settlement Demo Scenario...", "Creating Accounts, Locking FX Quote, and Executing Atomic Settlement...");
 
             // 1. Create USD Sender
-            const senderRes = await fetch('/api/accounts', {
+            const senderRes = await fetch(`${API_BASE}/api/accounts`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ owner_name: "Alice USD Corporate", currency: "USD", initial_balance: 10000 })
@@ -843,7 +847,7 @@
             const sender = await senderRes.json();
 
             // 2. Create EUR Receiver
-            const receiverRes = await fetch('/api/accounts', {
+            const receiverRes = await fetch(`${API_BASE}/api/accounts`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ owner_name: "Bob EUR Enterprise", currency: "EUR", initial_balance: 500 })
@@ -851,7 +855,7 @@
             const receiver = await receiverRes.json();
 
             // 3. Lock FX Quote
-            const quoteRes = await fetch('/api/quotes/lock', {
+            const quoteRes = await fetch(`${API_BASE}/api/quotes/lock`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ from_currency: "USD", to_currency: "EUR", amount: 1000, ttl_seconds: 60 })
@@ -859,7 +863,7 @@
             const quote = await quoteRes.json();
 
             // 4. Execute Settlement
-            const settleRes = await fetch('/api/settlements', {
+            const settleRes = await fetch(`${API_BASE}/api/settlements`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ sender_account_id: sender.id, receiver_account_id: receiver.id, quote_id: quote.quote_id, reference_id: "DEMO-REF-001" })
